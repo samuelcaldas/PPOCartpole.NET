@@ -8,7 +8,7 @@ To use this repository, you will need to have .NET installed on your machine.
 
 ## Usage
 
-To run the code, navigate to the root directory of this repository and run the following command:
+To run the code, you can open the solution file `PPOCartpole.NET.sln` in Visual Studio or another compatible IDE and build and run the project from there. Alternatively, you can navigate to the root directory of this repository and run the following command:
 
 ```
 dotnet run
