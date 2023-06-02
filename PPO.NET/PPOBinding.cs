@@ -1,4 +1,5 @@
 ﻿using Python.Runtime;
+using System.Data.Common;
 using System.Linq;
 
 namespace PPO.NET
@@ -14,14 +15,17 @@ namespace PPO.NET
         private dynamic np;
 
         public PPOBinding(int observationDimensions,
-                   int numActions,
-                   int stepsPerEpoch,
-                   double policyLearningRate = 3e-4,
-                   double valueFunctionLearningRate = 1e-3,
-                   double clipRatio = 0.2,
-                   int[] hiddenSizes = null,
-                   double gamma = 0.99,
-                   double lam = 0.95)
+                          int numActions,
+                          int stepsPerEpoch,
+                          int[] hiddenSizes = null,
+                          double clipRatio = 0.2,
+                          double policyLearningRate = 3e-4,
+                          double valueFunctionLearningRate = 1e-3,
+                          int train_policy_iterations = 80,
+                          int train_value_iterations = 80,
+                          double target_kl = 0.01,
+                          double gamma = 0.99,
+                          double lam = 0.95)
         {
             if (hiddenSizes == null)
                 hiddenSizes = new int[] { 64, 64 };
@@ -40,13 +44,13 @@ namespace PPO.NET
                 dynamic ppoModule = Py.Import("ppo");
                 pyPPO = ppoModule.PPO(new PyInt(observationDimensions),
                                       new PyInt(numActions),
-                                      new PyInt(stepsPerEpoch),
+                                      hiddenSizes,
+                                      new PyFloat(clipRatio),
                                       new PyFloat(policyLearningRate),
                                       new PyFloat(valueFunctionLearningRate),
-                                      new PyFloat(clipRatio),
-                                      hiddenSizes,
-                                      new PyFloat(gamma),
-                                      new PyFloat(lam));
+                                      new PyFloat(train_policy_iterations),
+                                      new PyInt(train_value_iterations),
+                                      new PyFloat(target_kl));
                 this.ppo = pyPPO.AsManagedObject(typeof(object));
             }
         }
@@ -102,6 +106,34 @@ namespace PPO.NET
         }
 
         /// <summary>
+        /// Get the action to take based on the given observation.
+        /// </summary>
+        /// <param name="observation">The observation to base the action on.</param>
+        /// <returns>A tuple containing the action, its value and its log probability.</returns>
+        public (int, double, double) GetAction(double[] observation)
+        {
+            using (Py.GIL())
+            {
+                // Convert the observation from a C# double array to a numpy array
+                dynamic observationNp = np.array(observation.ToList<double>(), dtype: np.float32).reshape(1, -1);
+
+                // Call the sample_action method and get the logits and action
+                dynamic result = this.ppo.sample_action(observationNp);
+
+                // Convert the action from a numpy int64 to a C# int
+                int action = result[0].AsManagedObject(typeof(int));
+
+                // Convert the value from a numpy float64 to a C# double
+                double value_t = result[1].AsManagedObject(typeof(double));
+
+                // Convert the log-probabilities from a numpy array to a C# double
+                double logprobability_t = result[2].AsManagedObject(typeof(double));
+
+                return (action, value_t, logprobability_t);
+            }
+        }
+
+        /// <summary>
         /// Computes the log probabilities of each action in the given logits and the action provided.
         /// </summary>
         /// <param name="logits">The logits from the model.</param>
@@ -120,10 +152,10 @@ namespace PPO.NET
                 // Call the logprobabilities method and get the log-probabilities
                 dynamic logProbabilities = ppo.logprobabilities(logitsNp, actionsNp);
 
-                // Convert the log-probabilities from a numpy array to a C# double array
-                double logProbabilitiesArray = logProbabilities.AsManagedObject(typeof(double));
+                // Convert the log-probabilities from a numpy array to a C# double
+                double logProbabilitiesDouble = logProbabilities.AsManagedObject(typeof(double));
 
-                return logProbabilitiesArray;
+                return logProbabilitiesDouble;
             }
         }
 
