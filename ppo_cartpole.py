@@ -153,7 +153,19 @@ class PPO:
         )
         kl = tf.reduce_sum(kl)
         return kl
-    
+
+
+    # Train the value function by regression on mean-squared error
+    @tf.function
+    def train_value_function(self, observation_buffer, return_buffer):
+        with tf.GradientTape() as tape:  # Record operations for automatic differentiation.
+            value_loss = tf.reduce_mean(
+                (return_buffer - self.critic(observation_buffer)) ** 2)
+        value_grads = tape.gradient(value_loss, self.critic.trainable_variables)
+        self.value_optimizer.apply_gradients(
+            zip(value_grads, self.critic.trainable_variables))
+        
+    # Train the policy and the value function
     def train(self,
               observation_buffer,
               action_buffer,
@@ -174,16 +186,14 @@ class PPO:
             for _ in range(self.train_value_iterations):
                 self.train_value_function(observation_buffer, return_buffer)
 
+    # Generate an action and return its value and log-probability
+    def get_action(self, observation):
+        logits, action = self.sample_action(observation)
+        # Get the value and log-probability of the action
+        value_t = self.critic(observation)
+        logprobability_t = self.logprobabilities(logits, action)
+        return action, value_t, logprobability_t
 
-    # Train the value function by regression on mean-squared error
-    @tf.function
-    def train_value_function(self, observation_buffer, return_buffer):
-        with tf.GradientTape() as tape:  # Record operations for automatic differentiation.
-            value_loss = tf.reduce_mean(
-                (return_buffer - self.critic(observation_buffer)) ** 2)
-        value_grads = tape.gradient(value_loss, self.critic.trainable_variables)
-        self.value_optimizer.apply_gradients(
-            zip(value_grads, self.critic.trainable_variables))
 
 
 """
@@ -221,16 +231,16 @@ buffer = Buffer(observation_dimensions, steps_per_epoch)
 
 # Initialize the PPO agent
 ppo = PPO(observation_dimensions=observation_dimensions,
-            num_actions=num_actions,
-            hidden_sizes=hidden_sizes,
-            gamma=gamma,
-            clip_ratio=clip_ratio,
-            policy_learning_rate=policy_learning_rate,
-            value_function_learning_rate=value_function_learning_rate,
-            train_policy_iterations=train_policy_iterations,
-            train_value_iterations=train_value_iterations,
-            lam=lam,
-            target_kl=target_kl)
+          num_actions=num_actions,
+          hidden_sizes=hidden_sizes,
+          gamma=gamma,
+          clip_ratio=clip_ratio,
+          policy_learning_rate=policy_learning_rate,
+          value_function_learning_rate=value_function_learning_rate,
+          train_policy_iterations=train_policy_iterations,
+          train_value_iterations=train_value_iterations,
+          lam=lam,
+          target_kl=target_kl)
 
 # Initialize the observation, episode return and episode length
 observation, info = env.reset()
@@ -251,17 +261,12 @@ for epoch in range(epochs):
         if render:
             env.render()
 
-        # Get the logits, action, and take one step in the environment
+        # Get the action, value, log-probability and take one step in the environment
         observation = observation.reshape(1, -1)
-        logits, action = ppo.sample_action(observation)
-        observation_new, reward, done, truncated, info = env.step(
-            action[0].numpy())
+        action, value_t, logprobability_t= ppo.get_action(observation)
+        observation_new, reward, done, truncated, info = env.step(action[0].numpy())
         episode_return += reward
         episode_length += 1
-
-        # Get the value and log-probability of the action
-        value_t = ppo.critic(observation)
-        logprobability_t = ppo.logprobabilities(logits, action)
 
         # Store obs, act, rew, v_t, logp_pi_t
         buffer.store(observation, action, reward, value_t, logprobability_t)
@@ -270,8 +275,7 @@ for epoch in range(epochs):
         observation = observation_new
 
         # Finish trajectory if reached to a terminal state
-        terminal = done
-        if terminal or (t == steps_per_epoch - 1):
+        if done or (t == steps_per_epoch - 1):
             last_value = 0 if done else ppo.critic(observation.reshape(1, -1))
             buffer.finish_trajectory(last_value)
             sum_return += episode_return
@@ -281,8 +285,7 @@ for epoch in range(epochs):
             episode_return, episode_length = 0, 0
 
     # Get values from the buffer
-    (
-        observation_buffer,
+    (   observation_buffer,
         action_buffer,
         advantage_buffer,
         return_buffer,
@@ -290,10 +293,10 @@ for epoch in range(epochs):
     ) = buffer.get()
 
     ppo.train(observation_buffer,
-                action_buffer,
-                advantage_buffer,
-                return_buffer,
-                logprobability_buffer)
+              action_buffer,
+              advantage_buffer,
+              return_buffer,
+              logprobability_buffer)
 
     # Print mean return and length for each epoch
     print(
