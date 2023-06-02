@@ -1,11 +1,6 @@
 ﻿using GymSharp;
 using PPO.NET;
-using PPOCartpole.NET;
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 
 namespace PPOCartpole.NET
@@ -36,24 +31,14 @@ namespace PPOCartpole.NET
         public void Train()
         {
             double[] observation = env.Reset();
-            double episodeReturn = 0;
-            int episodeLength = 0;
 
             for (int epoch = 0; epoch < epochs; epoch++)
             {
-                double sumReturn = 0;
-                double sumLength = 0;
-                int numEpisodes = 0;
-
                 for (int t = 0; t < stepsPerEpoch; t++)
                 {
-                    var sampledAction = ppo.SampleAction(observation);
-                    double[][] logits = sampledAction.Item1;
-                    int action = sampledAction.Item2;
+                    (double[][] logits, int action) = ppo.SampleAction(observation);
 
                     (double[] observationNew, double reward, bool done) = env.Step(action);
-                    episodeReturn += reward;
-                    episodeLength += 1;
 
                     double valueT = ppo.Critic(observation);
                     double logProbabilityT = ppo.LogProbabilities(logits, action);
@@ -67,12 +52,7 @@ namespace PPOCartpole.NET
                     {
                         double lastValue = done ? 0 : ppo.Critic(observation);
                         ppo.buffer.FinishTrajectory(lastValue);
-                        sumReturn += episodeReturn;
-                        sumLength += episodeLength;
-                        numEpisodes += 1;
                         observation = env.Reset();
-                        episodeReturn = 0;
-                        episodeLength = 0;
                     }
                 }
 
