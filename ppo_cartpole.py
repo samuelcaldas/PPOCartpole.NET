@@ -54,7 +54,6 @@ For this example the following libraries are used:
 1. `numpy` for n-dimensional arrays
 2. `tensorflow` and `keras` for building the deep RL PPO agent
 3. `gym` for getting everything we need about the environment
-4. `scipy.signal` for calculating the discounted cumulative sums of vectors
 """
 import numpy as np
 import tensorflow as tf
@@ -63,10 +62,10 @@ from tensorflow.keras import layers
 import gym
 from Buffer import Buffer
 
+
 """
 ## Functions and class
 """
-
 
 def mlp(x, sizes, activation=tf.tanh, output_activation=None):
     # Build a feedforward neural network
@@ -112,7 +111,8 @@ def train_policy(
             tf.minimum(ratio * advantage_buffer, min_advantage)
         )
     policy_grads = tape.gradient(policy_loss, actor.trainable_variables)
-    policy_optimizer.apply_gradients(zip(policy_grads, actor.trainable_variables))
+    policy_optimizer.apply_gradients(
+        zip(policy_grads, actor.trainable_variables))
 
     kl = tf.reduce_mean(
         logprobability_buffer
@@ -126,9 +126,11 @@ def train_policy(
 @tf.function
 def train_value_function(observation_buffer, return_buffer):
     with tf.GradientTape() as tape:  # Record operations for automatic differentiation.
-        value_loss = tf.reduce_mean((return_buffer - critic(observation_buffer)) ** 2)
+        value_loss = tf.reduce_mean(
+            (return_buffer - critic(observation_buffer)) ** 2)
     value_grads = tape.gradient(value_loss, critic.trainable_variables)
-    value_optimizer.apply_gradients(zip(value_grads, critic.trainable_variables))
+    value_optimizer.apply_gradients(
+        zip(value_grads, critic.trainable_variables))
 
 
 """
@@ -165,8 +167,10 @@ num_actions = env.action_space.n
 buffer = Buffer(observation_dimensions, steps_per_epoch)
 
 # Initialize the actor and the critic as keras models
-observation_input = keras.Input(shape=(observation_dimensions,), dtype=tf.float32)
-logits = mlp(observation_input, list(hidden_sizes) + [num_actions], tf.tanh, None)
+observation_input = keras.Input(
+    shape=(observation_dimensions,), dtype=tf.float32)
+logits = mlp(observation_input, list(
+    hidden_sizes) + [num_actions], tf.tanh, None)
 actor = keras.Model(inputs=observation_input, outputs=logits)
 value = tf.squeeze(
     mlp(observation_input, list(hidden_sizes) + [1], tf.tanh, None), axis=1
@@ -175,7 +179,8 @@ critic = keras.Model(inputs=observation_input, outputs=value)
 
 # Initialize the policy and the value function optimizers
 policy_optimizer = keras.optimizers.Adam(learning_rate=policy_learning_rate)
-value_optimizer = keras.optimizers.Adam(learning_rate=value_function_learning_rate)
+value_optimizer = keras.optimizers.Adam(
+    learning_rate=value_function_learning_rate)
 
 # Initialize the observation, episode return and episode length
 observation, info = env.reset()
@@ -199,7 +204,8 @@ for epoch in range(epochs):
         # Get the logits, action, and take one step in the environment
         observation = observation.reshape(1, -1)
         logits, action = sample_action(observation)
-        observation_new, reward, done, truncated, info = env.step(action[0].numpy())
+        observation_new, reward, done, truncated, info = env.step(
+            action[0].numpy())
         episode_return += reward
         episode_length += 1
 
@@ -266,4 +272,3 @@ After 20 epochs of training:
 
 ![Imgur](https://i.imgur.com/tKhTEaF.gif)
 """
-
