@@ -28,7 +28,7 @@ namespace PPOCartpole.NET
             this.hiddenSizes = hiddenSizes;
         }
 
-        public void Train()
+        public void ExecuteTraining()
         {
             double[] observation = env.Reset();
             for (int epoch = 0; epoch < epochs; epoch++)
