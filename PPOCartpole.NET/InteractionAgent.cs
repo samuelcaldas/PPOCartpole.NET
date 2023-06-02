@@ -35,10 +35,8 @@ namespace PPOCartpole.NET
             {
                 for (int t = 0; t < stepsPerEpoch; t++)
                 {
-                    (double[][] logits, int action) = ppo.SampleAction(observation);
+                    (int action, double valueT, double logProbabilityT) = ppo.GetAction(observation);
                     (double[] observationNew, double reward, bool done) = env.Step(action);
-                    double valueT = ppo.Critic(observation);
-                    double logProbabilityT = ppo.LogProbabilities(logits, action);
                     ppo.buffer.Store(observation, action, reward, valueT, logProbabilityT);
                     observation = observationNew;
                     bool terminal = done || (t == stepsPerEpoch - 1);
@@ -50,30 +48,7 @@ namespace PPOCartpole.NET
                     }
                 }
                 var (observationBuffer, actionBuffer, advantageBuffer, returnBuffer, logProbabilityBuffer) = ppo.buffer.Get();
-                TrainPolicy(observationBuffer, actionBuffer, advantageBuffer, logProbabilityBuffer);
-                TrainValueFunction(observationBuffer, returnBuffer);
-            }
-        }
-
-        private void TrainPolicy(double[][] observationBuffer, int[] actionBuffer, double[] advantageBuffer, double[] logProbabilityBuffer)
-        {
-            double kl = 0;
-            for (int i = 0; i < trainPolicyIterations; i++)
-            {
-                kl = ppo.TrainPolicy(observationBuffer, actionBuffer, logProbabilityBuffer, advantageBuffer);
-                if (kl > 1.5 * targetKl)
-                {
-                    Console.WriteLine($"Early stopping at iteration {i} due to reaching max kl: {kl:F2}");
-                    break;
-                }
-            }
-        }
-
-        private void TrainValueFunction(double[][] observationBuffer, double[] returnBuffer)
-        {
-            for (int i = 0; i < trainValueIterations; i++)
-            {
-                ppo.TrainValueFunction(observationBuffer, returnBuffer);
+                ppo.Train(observationBuffer, actionBuffer, advantageBuffer, returnBuffer, logProbabilityBuffer);
             }
         }
     }

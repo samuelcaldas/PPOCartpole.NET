@@ -1,4 +1,5 @@
 ﻿using Python.Runtime;
+using System;
 using System.Data.Common;
 using System.Linq;
 
@@ -13,6 +14,9 @@ namespace PPO.NET
         private dynamic ppo;
         public CustomBuffer buffer;
         private dynamic np;
+        private int trainPolicyIterations;
+        private int trainValueIterations;
+        private double targetKl;
 
         public PPOBinding(int observationDimensions,
                           int numActions,
@@ -21,14 +25,18 @@ namespace PPO.NET
                           double clipRatio = 0.2,
                           double policyLearningRate = 3e-4,
                           double valueFunctionLearningRate = 1e-3,
-                          int train_policy_iterations = 80,
-                          int train_value_iterations = 80,
-                          double target_kl = 0.01,
+                          int trainPolicyIterations = 80,
+                          int trainValueIterations = 80,
+                          double targetKL = 0.01,
                           double gamma = 0.99,
                           double lam = 0.95)
         {
             if (hiddenSizes == null)
                 hiddenSizes = new int[] { 64, 64 };
+
+            this.trainPolicyIterations = trainPolicyIterations;
+            this.trainValueIterations = trainValueIterations;
+            this.targetKl = targetKL;
 
             buffer = new CustomBuffer(observationDimensions, stepsPerEpoch, gamma, lam);
 
@@ -48,9 +56,9 @@ namespace PPO.NET
                                       new PyFloat(clipRatio),
                                       new PyFloat(policyLearningRate),
                                       new PyFloat(valueFunctionLearningRate),
-                                      new PyFloat(train_policy_iterations),
-                                      new PyInt(train_value_iterations),
-                                      new PyFloat(target_kl));
+                                      new PyInt(trainPolicyIterations),
+                                      new PyInt(trainValueIterations),
+                                      new PyFloat(targetKL));
                 this.ppo = pyPPO.AsManagedObject(typeof(object));
             }
         }
@@ -118,7 +126,7 @@ namespace PPO.NET
                 dynamic observationNp = np.array(observation.ToList<double>(), dtype: np.float32).reshape(1, -1);
 
                 // Call the sample_action method and get the logits and action
-                dynamic result = this.ppo.sample_action(observationNp);
+                dynamic result = this.ppo.get_action(observationNp);
 
                 // Convert the action from a numpy int64 to a C# int
                 int action = result[0].AsManagedObject(typeof(int));
@@ -214,10 +222,10 @@ namespace PPO.NET
         }
 
         /// <summary>
-        /// Calculates the value of the given observation.
+        /// Calculates the value of the Critic network for a given observation.
         /// </summary>
-        /// <param name="observation">The observation to calculate the value for.</param>
-        /// <returns>The calculated value.</returns>
+        /// <param name="observation">The observation as a double array.</param>
+        /// <returns>The Critic network value as a double.</returns>
         public double Critic(double[] observation)
         {
             using (Py.GIL())
@@ -232,6 +240,33 @@ namespace PPO.NET
                 double valueDouble = value.AsManagedObject(typeof(double));
 
                 return valueDouble;
+            }
+        }
+
+        /// <summary>
+        /// Trains the PPO model using the provided buffer of observations, actions, advantages, returns and log probabilities.
+        /// </summary>
+        /// <param name="observationBuffer">A 2D array containing the observations for each time step.</param>
+        /// <param name="actionBuffer">An array containing the actions taken at each time step.</param>
+        /// <param name="advantageBuffer">An array containing the advantages for each time step.</param>
+        /// <param name="returnBuffer">An array containing the returns for each time step.</param>
+        /// <param name="logProbabilityBuffer">An array containing the log probabilities for each time step.</param>
+        public void Train(double[][] observationBuffer, int[] actionBuffer, double[] advantageBuffer, double[] returnBuffer, double[] logProbabilityBuffer)
+        {
+            double kl = 0;
+            for (int i = 0; i < this.trainPolicyIterations; i++)
+            {
+                kl = TrainPolicy(observationBuffer, actionBuffer, logProbabilityBuffer, advantageBuffer);
+                if (kl > 1.5 * this.targetKl)
+                {
+                    Console.WriteLine($"Early stopping at iteration {i} due to reaching max kl: {kl:F2}");
+                    break;
+                }
+            }
+
+            for (int i = 0; i < this.trainValueIterations; i++)
+            {
+                TrainValueFunction(observationBuffer, returnBuffer);
             }
         }
     }

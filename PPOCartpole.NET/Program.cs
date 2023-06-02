@@ -38,10 +38,13 @@ namespace PPOCartpole.NET
             PPOBinding ppo = new PPOBinding(observationDimensions,
                                             numActions,
                                             stepsPerEpoch,
+                                            hiddenSizes: hiddenSizes,
+                                            clipRatio: (double)0.2,
                                             policyLearningRate: (double)3e-4,
                                             valueFunctionLearningRate: (double)1e-3,
-                                            clipRatio: (double)0.2,
-                                            hiddenSizes: hiddenSizes,
+                                            trainPolicyIterations,
+                                            trainValueIterations,
+                                            targetKL: 0.01,
                                             gamma: (double)0.99,
                                             lam: (double)0.95);
 
