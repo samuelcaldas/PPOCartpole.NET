@@ -69,11 +69,6 @@ import time
 """
 
 
-def discounted_cumulative_sums(x, discount):
-    # Discounted cumulative sums of vectors for computing rewards-to-go and advantage estimates
-    return scipy.signal.lfilter([1], [1, float(-discount)], x[::-1], axis=0)[::-1]
-
-
 class Buffer:
     # Buffer for storing trajectories
     def __init__(self, observation_dimensions, size, gamma=0.99, lam=0.95):
@@ -131,6 +126,10 @@ class Buffer:
             self.return_buffer,
             self.logprobability_buffer,
         )
+    
+    def discounted_cumulative_sums(x, discount):
+        # Discounted cumulative sums of vectors for computing rewards-to-go and advantage estimates
+        return scipy.signal.lfilter([1], [1, float(-discount)], x[::-1], axis=0)[::-1]
 
 
 def mlp(x, sizes, activation=tf.tanh, output_activation=None):
