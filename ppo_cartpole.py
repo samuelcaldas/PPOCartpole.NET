@@ -153,6 +153,26 @@ class PPO:
         )
         kl = tf.reduce_sum(kl)
         return kl
+    
+    def train(self,
+              observation_buffer,
+              action_buffer,
+              advantage_buffer,
+              return_buffer,
+              logprobability_buffer
+            ):
+            # Update the policy and implement early stopping using KL divergence
+            for _ in range(self.train_policy_iterations):
+                kl = self.train_policy(
+                    observation_buffer, action_buffer, logprobability_buffer, advantage_buffer
+                )
+                if kl > 1.5 * target_kl:
+                    # Early Stopping
+                    break
+
+            # Update the value function
+            for _ in range(self.train_value_iterations):
+                self.train_value_function(observation_buffer, return_buffer)
 
 
     # Train the value function by regression on mean-squared error
@@ -266,21 +286,14 @@ for epoch in range(epochs):
         action_buffer,
         advantage_buffer,
         return_buffer,
-        logprobability_buffer,
+        logprobability_buffer
     ) = buffer.get()
 
-    # Update the policy and implement early stopping using KL divergence
-    for _ in range(train_policy_iterations):
-        kl = ppo.train_policy(
-            observation_buffer, action_buffer, logprobability_buffer, advantage_buffer
-        )
-        if kl > 1.5 * target_kl:
-            # Early Stopping
-            break
-
-    # Update the value function
-    for _ in range(train_value_iterations):
-        ppo.train_value_function(observation_buffer, return_buffer)
+    ppo.train(observation_buffer,
+                action_buffer,
+                advantage_buffer,
+                return_buffer,
+                logprobability_buffer)
 
     # Print mean return and length for each epoch
     print(
