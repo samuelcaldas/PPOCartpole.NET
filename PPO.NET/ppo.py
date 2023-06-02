@@ -54,10 +54,6 @@ For this example the following libraries are used:
 1. `numpy` for n-dimensional arrays
 2. `tensorflow` and `keras` for building the deep RL PPO agent
 3. `gym` for getting everything we need about the environment
-4. `scipy.signal` for calculating the discounted cumulative sums of vectors
-"""
-"""
-## Functions and class
 """
 
 
@@ -67,69 +63,43 @@ import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
-
 class PPO:
-    def __init__(
-        self,
-        observation_dimensions,
-        num_actions,
-        steps_per_epoch,
-        policy_learning_rate=3e-4,
-        value_function_learning_rate=1e-3,
-        clip_ratio=0.2,
-        hidden_sizes=(64, 64),
-        gamma=0.99,
-        lam=0.95
-    ):
+    def __init__(self,
+                 observation_dimensions,
+                 num_actions,
+                 hidden_sizes=(64, 64),
+                 clip_ratio=0.2,
+                 policy_learning_rate=3e-4,
+                 value_function_learning_rate=1e-3,
+                 train_policy_iterations=80,
+                 train_value_iterations=80,
+                 target_kl=0.01):
         self.observation_dimensions = observation_dimensions
-        self.steps_per_epoch = steps_per_epoch
-        self.hidden_sizes = hidden_sizes
         self.num_actions = num_actions
+        self.hidden_sizes = hidden_sizes
+        self.clip_ratio = clip_ratio
         self.policy_learning_rate = policy_learning_rate
         self.value_function_learning_rate = value_function_learning_rate
-        self.clip_ratio = clip_ratio
-
-        # Initialize the buffer
-        #self.buffer = Buffer(
-        #    self.observation_dimensions,
-        #    self.steps_per_epoch
-        #)
+        self.train_policy_iterations = train_policy_iterations
+        self.train_value_iterations = train_value_iterations
+        self.target_kl = target_kl
 
         # Initialize the actor and the critic as keras models
         observation_input = keras.Input(
-            shape=(self.observation_dimensions,),
-            dtype=tf.float32
-        )
-
-        logits = self.mlp(
-            observation_input,
-            list(self.hidden_sizes) + [self.num_actions],
-            tf.tanh,
-            None
-        )
-
+            shape=(self.observation_dimensions,), dtype=tf.float32)
+        logits = self.mlp(observation_input, list(
+            self.hidden_sizes) + [self.num_actions], tf.tanh, None)
         self.actor = keras.Model(inputs=observation_input, outputs=logits)
-
         value = tf.squeeze(
-            self.mlp(
-                observation_input,
-                list(self.hidden_sizes) + [1],
-                tf.tanh,
-                None
-            ),
-            axis=1
+            self.mlp(observation_input, list(self.hidden_sizes) + [1], tf.tanh, None), axis=1
         )
-
         self.critic = keras.Model(inputs=observation_input, outputs=value)
 
         # Initialize the policy and the value function optimizers
         self.policy_optimizer = keras.optimizers.Adam(
-            learning_rate=self.policy_learning_rate
-        )
-
+            learning_rate=self.policy_learning_rate)
         self.value_optimizer = keras.optimizers.Adam(
-            learning_rate=self.value_function_learning_rate
-        )
+            learning_rate=self.value_function_learning_rate)
 
     def mlp(self, x, sizes, activation=tf.tanh, output_activation=None):
         # Build a feedforward neural network
@@ -145,15 +115,18 @@ class PPO:
         )
         return logprobability
 
+    # Sample action from actor
+
     @tf.function
     def sample_action(self, observation):
-        # Sample action from actor
         logits = self.actor(observation)
         action = tf.squeeze(tf.random.categorical(logits, 1), axis=1)
         return logits, action
 
     @tf.function
-    def train_policy(self, observation_buffer, action_buffer, logprobability_buffer, advantage_buffer):
+    def train_policy(
+        self, observation_buffer, action_buffer, logprobability_buffer, advantage_buffer
+    ):
         # Train the policy by maxizing the PPO-Clip objective
         with tf.GradientTape() as tape:  # Record operations for automatic differentiation.
             ratio = tf.exp(
@@ -175,12 +148,12 @@ class PPO:
         self.policy_optimizer.apply_gradients(
             zip(policy_grads, self.actor.trainable_variables))
 
-        self.kl = tf.reduce_mean(
+        kl = tf.reduce_mean(
             logprobability_buffer
             - self.logprobabilities(self.actor(observation_buffer), action_buffer)
         )
-        self.kl = tf.reduce_sum(self.kl)
-        return self.kl
+        kl = tf.reduce_sum(kl)
+        return kl
 
     @tf.function
     def train_value_function(self, observation_buffer, return_buffer):
@@ -193,13 +166,38 @@ class PPO:
         self.value_optimizer.apply_gradients(
             zip(value_grads, self.critic.trainable_variables))
 
+    def train(
+        self, observation_buffer, action_buffer, advantage_buffer, return_buffer, logprobability_buffer
+    ):
+        # Train the policy and the value function
+        # Update the policy and implement early stopping using KL divergence
+        for _ in range(self.train_policy_iterations):
+            kl = self.train_policy(
+                observation_buffer, action_buffer, logprobability_buffer, advantage_buffer
+            )
+            if kl > 1.5 * self.target_kl:
+                # Early Stopping
+                break
+
+        # Update the value function
+        for _ in range(self.train_value_iterations):
+            self.train_value_function(observation_buffer, return_buffer)
+
+    def get_action(self, observation):
+        # Generate an action and return its value and log-probability
+        logits, action = self.sample_action(observation)
+        # Get the value and log-probability of the action
+        value_t = self.critic(observation)
+        logprobability_t = self.logprobabilities(logits, action)
+        return action, value_t, logprobability_t
+
     def save(self, path):
-        """Salva o modelo treinado em um arquivo."""
+        # Salva o modelo treinado em um arquivo.
         self.actor.save(f"{path}_actor.h5")
         self.critic.save(f"{path}_critic.h5")
 
     def load(self, path):
-        """Carrega um modelo previamente treinado de um arquivo."""
+        # Carrega um modelo previamente treinado de um arquivo.
         self.actor = keras.models.load_model(f"{path}_actor.h5")
         self.critic = keras.models.load_model(f"{path}_critic.h5")
 

@@ -55,50 +55,53 @@ For this example the following libraries are used:
 2. `tensorflow` and `keras` for building the deep RL PPO agent
 3. `gym` for getting everything we need about the environment
 """
+
+
+
+
 import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
 import gym
 from Buffer import Buffer
-
-
-"""
-## Functions and class
-"""
-
 class PPO:
-    def __init__(self, observation_dimensions, num_actions, hidden_sizes=(64, 64), gamma=0.99, clip_ratio=0.2,
-                 policy_learning_rate=3e-4, value_function_learning_rate=1e-3,
-                 train_policy_iterations=80, train_value_iterations=80,
-                 lam=0.97, target_kl=0.01):
+    def __init__(self,
+                 observation_dimensions,
+                 num_actions,
+                 hidden_sizes=(64, 64),
+                 clip_ratio=0.2,
+                 policy_learning_rate=3e-4,
+                 value_function_learning_rate=1e-3,
+                 train_policy_iterations=80,
+                 train_value_iterations=80,
+                 target_kl=0.01):
         self.observation_dimensions = observation_dimensions
         self.num_actions = num_actions
         self.hidden_sizes = hidden_sizes
-        self.gamma = gamma
         self.clip_ratio = clip_ratio
         self.policy_learning_rate = policy_learning_rate
         self.value_function_learning_rate = value_function_learning_rate
         self.train_policy_iterations = train_policy_iterations
         self.train_value_iterations = train_value_iterations
-        self.lam = lam
         self.target_kl = target_kl
 
         # Initialize the actor and the critic as keras models
         observation_input = keras.Input(
-            shape=(observation_dimensions,), dtype=tf.float32)
+            shape=(self.observation_dimensions,), dtype=tf.float32)
         logits = self.mlp(observation_input, list(
-            hidden_sizes) + [num_actions], tf.tanh, None)
+            self.hidden_sizes) + [self.num_actions], tf.tanh, None)
         self.actor = keras.Model(inputs=observation_input, outputs=logits)
         value = tf.squeeze(
-            self.mlp(observation_input, list(hidden_sizes) + [1], tf.tanh, None), axis=1
+            self.mlp(observation_input, list(self.hidden_sizes) + [1], tf.tanh, None), axis=1
         )
         self.critic = keras.Model(inputs=observation_input, outputs=value)
 
         # Initialize the policy and the value function optimizers
-        self.policy_optimizer = keras.optimizers.Adam(learning_rate=policy_learning_rate)
-        self.value_optimizer = keras.optimizers.Adam(learning_rate=value_function_learning_rate)
-
+        self.policy_optimizer = keras.optimizers.Adam(
+            learning_rate=self.policy_learning_rate)
+        self.value_optimizer = keras.optimizers.Adam(
+            learning_rate=self.value_function_learning_rate)
 
     def mlp(self, x, sizes, activation=tf.tanh, output_activation=None):
         # Build a feedforward neural network
@@ -106,44 +109,45 @@ class PPO:
             x = layers.Dense(units=size, activation=activation)(x)
         return layers.Dense(units=sizes[-1], activation=output_activation)(x)
 
-
     def logprobabilities(self, logits, a):
         # Compute the log-probabilities of taking actions a by using the logits (i.e. the output of the actor)
         logprobabilities_all = tf.nn.log_softmax(logits)
         logprobability = tf.reduce_sum(
-            tf.one_hot(a, num_actions) * logprobabilities_all, axis=1
+            tf.one_hot(a, self.num_actions) * logprobabilities_all, axis=1
         )
         return logprobability
 
-
     # Sample action from actor
+
     @tf.function
     def sample_action(self, observation):
         logits = self.actor(observation)
         action = tf.squeeze(tf.random.categorical(logits, 1), axis=1)
         return logits, action
 
-
     # Train the policy by maxizing the PPO-Clip objective
+
     @tf.function
-    def train_policy(self, 
-        observation_buffer, action_buffer, logprobability_buffer, advantage_buffer
-    ):
+    def train_policy(self,
+                     observation_buffer, action_buffer, logprobability_buffer, advantage_buffer
+                     ):
         with tf.GradientTape() as tape:  # Record operations for automatic differentiation.
             ratio = tf.exp(
-                self.logprobabilities(self.actor(observation_buffer), action_buffer)
+                self.logprobabilities(self.actor(
+                    observation_buffer), action_buffer)
                 - logprobability_buffer
             )
             min_advantage = tf.where(
                 advantage_buffer > 0,
-                (1 + clip_ratio) * advantage_buffer,
-                (1 - clip_ratio) * advantage_buffer,
+                (1 + self.clip_ratio) * advantage_buffer,
+                (1 - self.clip_ratio) * advantage_buffer,
             )
 
             policy_loss = -tf.reduce_mean(
                 tf.minimum(ratio * advantage_buffer, min_advantage)
             )
-        policy_grads = tape.gradient(policy_loss, self.actor.trainable_variables)
+        policy_grads = tape.gradient(
+            policy_loss, self.actor.trainable_variables)
         self.policy_optimizer.apply_gradients(
             zip(policy_grads, self.actor.trainable_variables))
 
@@ -154,17 +158,18 @@ class PPO:
         kl = tf.reduce_sum(kl)
         return kl
 
-
     # Train the value function by regression on mean-squared error
+
     @tf.function
     def train_value_function(self, observation_buffer, return_buffer):
         with tf.GradientTape() as tape:  # Record operations for automatic differentiation.
             value_loss = tf.reduce_mean(
                 (return_buffer - self.critic(observation_buffer)) ** 2)
-        value_grads = tape.gradient(value_loss, self.critic.trainable_variables)
+        value_grads = tape.gradient(
+            value_loss, self.critic.trainable_variables)
         self.value_optimizer.apply_gradients(
             zip(value_grads, self.critic.trainable_variables))
-        
+
     # Train the policy and the value function
     def train(self,
               observation_buffer,
@@ -172,19 +177,19 @@ class PPO:
               advantage_buffer,
               return_buffer,
               logprobability_buffer
-            ):
-            # Update the policy and implement early stopping using KL divergence
-            for _ in range(self.train_policy_iterations):
-                kl = self.train_policy(
-                    observation_buffer, action_buffer, logprobability_buffer, advantage_buffer
-                )
-                if kl > 1.5 * target_kl:
-                    # Early Stopping
-                    break
+              ):
+        # Update the policy and implement early stopping using KL divergence
+        for _ in range(self.train_policy_iterations):
+            kl = self.train_policy(
+                observation_buffer, action_buffer, logprobability_buffer, advantage_buffer
+            )
+            if kl > 1.5 * self.target_kl:
+                # Early Stopping
+                break
 
-            # Update the value function
-            for _ in range(self.train_value_iterations):
-                self.train_value_function(observation_buffer, return_buffer)
+        # Update the value function
+        for _ in range(self.train_value_iterations):
+            self.train_value_function(observation_buffer, return_buffer)
 
     # Generate an action and return its value and log-probability
     def get_action(self, observation):
@@ -193,7 +198,6 @@ class PPO:
         value_t = self.critic(observation)
         logprobability_t = self.logprobabilities(logits, action)
         return action, value_t, logprobability_t
-
 
 
 """
@@ -227,19 +231,17 @@ observation_dimensions = env.observation_space.shape[0]
 num_actions = env.action_space.n
 
 # Initialize the buffer
-buffer = Buffer(observation_dimensions, steps_per_epoch)
+buffer = Buffer(observation_dimensions, steps_per_epoch, gamma, lam)
 
 # Initialize the PPO agent
 ppo = PPO(observation_dimensions=observation_dimensions,
           num_actions=num_actions,
           hidden_sizes=hidden_sizes,
-          gamma=gamma,
           clip_ratio=clip_ratio,
           policy_learning_rate=policy_learning_rate,
           value_function_learning_rate=value_function_learning_rate,
           train_policy_iterations=train_policy_iterations,
           train_value_iterations=train_value_iterations,
-          lam=lam,
           target_kl=target_kl)
 
 # Initialize the observation, episode return and episode length
@@ -263,8 +265,9 @@ for epoch in range(epochs):
 
         # Get the action, value, log-probability and take one step in the environment
         observation = observation.reshape(1, -1)
-        action, value_t, logprobability_t= ppo.get_action(observation)
-        observation_new, reward, done, truncated, info = env.step(action[0].numpy())
+        action, value_t, logprobability_t = ppo.get_action(observation)
+        observation_new, reward, done, truncated, info = env.step(
+            action[0].numpy())
         episode_return += reward
         episode_length += 1
 
@@ -285,12 +288,12 @@ for epoch in range(epochs):
             episode_return, episode_length = 0, 0
 
     # Get values from the buffer
-    (   observation_buffer,
+    (observation_buffer,
         action_buffer,
         advantage_buffer,
         return_buffer,
         logprobability_buffer
-    ) = buffer.get()
+     ) = buffer.get()
 
     ppo.train(observation_buffer,
               action_buffer,
