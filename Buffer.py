@@ -35,10 +35,10 @@ class Buffer:
 
         deltas = rewards[:-1] + self.gamma * values[1:] - values[:-1]
 
-        self.advantage_buffer[path_slice] = discounted_cumulative_sums(
+        self.advantage_buffer[path_slice] = self.discounted_cumulative_sums(
             deltas, self.gamma * self.lam
         )
-        self.return_buffer[path_slice] = discounted_cumulative_sums(
+        self.return_buffer[path_slice] = self.discounted_cumulative_sums(
             rewards, self.gamma
         )[:-1]
 
@@ -60,6 +60,6 @@ class Buffer:
             self.logprobability_buffer,
         )
 
-    def discounted_cumulative_sums(x, discount):
+    def discounted_cumulative_sums(self, x, discount):
         # Discounted cumulative sums of vectors for computing rewards-to-go and advantage estimates
         return scipy.signal.lfilter([1], [1, float(-discount)], x[::-1], axis=0)[::-1]
