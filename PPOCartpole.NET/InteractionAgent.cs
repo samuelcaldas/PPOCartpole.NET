@@ -28,28 +28,33 @@ namespace PPOCartpole.NET
             this.hiddenSizes = hiddenSizes;
         }
 
-        public void ExecuteTraining()
+        public void TrainingLoop()
         {
             double[] observation = env.Reset();
-            for (int epoch = 0; epoch < epochs; epoch++)
+            for (int epoch = 0; epoch < this.epochs; epoch++)
             {
-                for (int t = 0; t < stepsPerEpoch; t++)
+                for (int t = 0; t < this.stepsPerEpoch; t++)
                 {
                     (int action, double valueT, double logProbabilityT) = ppo.GetAction(observation);
                     (double[] observationNew, double reward, bool done) = env.Step(action);
                     ppo.buffer.Store(observation, action, reward, valueT, logProbabilityT);
                     observation = observationNew;
-                    bool terminal = done || (t == stepsPerEpoch - 1);
-                    if (terminal)
+                    done = done || (t == stepsPerEpoch - 1);
+                    if (done)
                     {
                         double lastValue = done ? 0 : ppo.Critic(observation);
                         ppo.buffer.FinishTrajectory(lastValue);
                         observation = env.Reset();
                     }
                 }
-                var (observationBuffer, actionBuffer, advantageBuffer, returnBuffer, logProbabilityBuffer) = ppo.buffer.Get();
-                ppo.Train(observationBuffer, actionBuffer, advantageBuffer, returnBuffer, logProbabilityBuffer);
+                ExecuteTraining();
             }
+        }
+
+        private void ExecuteTraining()
+        {
+            var (observationBuffer, actionBuffer, advantageBuffer, returnBuffer, logProbabilityBuffer) = ppo.buffer.Get();
+            ppo.Train(observationBuffer, actionBuffer, advantageBuffer, returnBuffer, logProbabilityBuffer);
         }
     }
 }

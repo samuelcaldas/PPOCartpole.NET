@@ -56,7 +56,7 @@ namespace PPOCartpole.NET
                                                           trainValueIterations,
                                                           targetKl,
                                                           hiddenSizes);
-            agent.ExecuteTraining();
+            agent.TrainingLoop();
 
             Console.ReadKey();
         }
